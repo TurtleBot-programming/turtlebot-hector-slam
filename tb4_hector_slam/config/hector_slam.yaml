@@ -1,0 +1,51 @@
+hector_mapping:
+  ros__parameters:
+    use_sim_time: false
+
+    # Frames (TurtleBot 4 publishes odom -> base_link; Hector publishes map -> odom)
+    map_frame: map
+    base_frame: base_link
+    odom_frame: odom
+    pub_map_odom_transform: true
+    pub_map_scanmatch_transform: true
+    tf_map_scanmatch_transform_frame_name: scanmatcher_frame
+    use_tf_scan_transformation: true
+    use_tf_pose_start_estimate: false
+    map_with_known_poses: false
+
+    # Sensor (RPLIDAR A1 on TurtleBot 4)
+    scan_topic: scan
+    scan_subscriber_queue_size: 5
+    laser_min_dist: 0.15
+    laser_max_dist: 12.0
+    laser_z_min_value: -1.0
+    laser_z_max_value: 1.0
+
+    # Map
+    map_resolution: 0.05
+    map_size: 2048
+    map_start_x: 0.5
+    map_start_y: 0.5
+    map_multi_res_levels: 2
+    map_pub_period: 2.0
+    advertise_map_service: true
+
+    # Map update
+    update_factor_free: 0.4
+    update_factor_occupied: 0.9
+    map_update_distance_thresh: 0.4
+    map_update_angle_thresh: 0.06
+
+    # Debug
+    pub_drawings: false
+    pub_debug_output: false
+    pub_odometry: false
+    output_timing: false
+
+hector_trajectory_server:
+  ros__parameters:
+    use_sim_time: false
+    target_frame_name: map
+    source_frame_name: base_link
+    trajectory_update_rate: 4.0
+    trajectory_publish_rate: 0.25

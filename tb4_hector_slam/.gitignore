@@ -1,0 +1,12 @@
+# ROS2 colcon workspace build artifacts
+build/
+install/
+log/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -9,6 +9,7 @@ simulated in [Webots](https://cyberbotics.com/).
 ```
 .
 ├── docs/      Project documentation (reports, notes, diagrams)
+├── tb4_hector_slam/  ROS 2 package: Hector SLAM on the TurtleBot 4
 ├── webots/    Webots simulation files (worlds, controllers, protos)
 └── README.md
 ```
@@ -16,6 +17,7 @@ simulated in [Webots](https://cyberbotics.com/).
 | Folder | Purpose |
 | ------ | ------- |
 | [`docs/`](docs/) | Written documentation for the case study |
+| [`tb4_hector_slam/`](tb4_hector_slam/) | ROS 2 package launching Hector SLAM on the TurtleBot 4 |
 | [`webots/`](webots/) | Webots worlds, robot controllers and related assets |
 
 ## Getting started

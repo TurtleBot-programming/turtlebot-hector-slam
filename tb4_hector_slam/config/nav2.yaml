@@ -123,7 +123,9 @@ controller_server:
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 0.2
+      # Hector publishes map->odom once per scan (~10 Hz), so it can lag the
+      # latest odom by ~0.3 s; 0.2 s made every control cycle fail.
+      transform_tolerance: 0.5
       xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
@@ -188,6 +190,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
+      transform_tolerance: 0.5
       robot_radius: 0.175
       resolution: 0.06
       track_unknown_space: true

@@ -157,6 +157,7 @@ class Bridge:
         except (ValueError, SystemError):
             return  # no measurement available yet
         if self.reverse_scan:
+            # Webots orders lidar rays clockwise; LaserScan is counter-clockwise.
             ranges.reverse()
         n = len(ranges)
         fov = self.lidar.getFov()
@@ -233,7 +234,9 @@ if __name__ == '__main__':
     ap.add_argument('--patrol', action='store_true',
                     help='drive the built-in waypoint loop, ignore /cmd_vel')
     ap.add_argument('--lidar-period-ms', type=int, default=100)
-    ap.add_argument('--reverse-scan', action='store_true',
-                    help='reverse Webots range order (if scan appears mirrored)')
+    ap.add_argument('--no-reverse-scan', dest='reverse_scan',
+                    action='store_false',
+                    help='publish Webots ranges in their native (clockwise) '
+                         'order; this mirrors the scan, debugging only')
     a = ap.parse_args()
     Bridge(a.patrol, a.lidar_period_ms, a.reverse_scan).run()

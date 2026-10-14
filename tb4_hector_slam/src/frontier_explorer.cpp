@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <vector>
@@ -180,6 +181,7 @@ private:
         RCLCPP_WARN(get_logger(), "Goal timed out; cancelling and blacklisting it.");
         blacklist_.push_back(current_goal_);
         client_->async_cancel_all_goals();
+        ++goal_seq_;  // ignore the CANCELED result of this goal
         goal_active_ = false;
       }
       return;
@@ -221,15 +223,20 @@ private:
     g.pose.pose.orientation.z = qt.z();
     g.pose.pose.orientation.w = qt.w();
 
+    // Callbacks of a goal we already gave up on (timeout) must not touch the
+    // state of the goal sent after it.
+    const uint64_t seq = ++goal_seq_;
     auto opts = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
-    opts.goal_response_callback = [this](GoalHandle::SharedPtr h) {
-        if (!h) {
-          RCLCPP_WARN(get_logger(), "Goal rejected; blacklisting.");
-          blacklist_.push_back(current_goal_);
+    opts.goal_response_callback = [this, seq](GoalHandle::SharedPtr h) {
+        if (!h && seq == goal_seq_) {
+          // bt_navigator advertises the action before it is activated and
+          // rejects goals until then; that says nothing about the frontier.
+          RCLCPP_WARN(get_logger(), "Goal rejected (Nav2 not active yet?); retrying.");
           goal_active_ = false;
         }
       };
-    opts.result_callback = [this](const GoalHandle::WrappedResult & r) {
+    opts.result_callback = [this, seq](const GoalHandle::WrappedResult & r) {
+        if (seq != goal_seq_) {return;}
         if (r.code != rclcpp_action::ResultCode::SUCCEEDED) {
           RCLCPP_WARN(get_logger(), "Goal not reached (code %d); blacklisting.",
             static_cast<int>(r.code));
@@ -246,6 +253,7 @@ private:
 
   std::string map_frame_, base_frame_;
   int min_frontier_cells_, empty_limit_, empty_count_{0};
+  uint64_t goal_seq_{0};
   double clearance_, blacklist_radius_, min_goal_dist_, goal_timeout_;
   nav_msgs::msg::OccupancyGrid::SharedPtr map_;
   std::vector<Point2D> blacklist_;

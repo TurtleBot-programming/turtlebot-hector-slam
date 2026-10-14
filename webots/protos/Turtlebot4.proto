@@ -227,6 +227,7 @@ PROTO Turtlebot4 [
           }
         ]
         name "front_caster_link"
+        contactMaterial "caster"
         boundingObject Sphere {
           radius 0.01
         }
@@ -241,7 +242,10 @@ PROTO Turtlebot4 [
         }
       }
       Solid {
-        translation -0.125000 0.000000 0.012200
+        # Rear caster raised 1 cm (was z 0.0122): it floats on flat ground
+        # anyway, and lower it bridged ramp creases with the front caster,
+        # lifting the drive wheels off the ground.
+        translation -0.125000 0.000000 0.022200
         rotation -1.000000 0.000000 0.000000 1.570796
         children [
           Shape {
@@ -252,6 +256,7 @@ PROTO Turtlebot4 [
           }
         ]
         name "rear_caster_link"
+        contactMaterial "caster"
         boundingObject Sphere {
           radius 0.005
         }
@@ -1005,7 +1010,10 @@ PROTO Turtlebot4 [
     physics Physics {
       density -1
       mass 0.810000
-      centerOfMass [ 0.000000 0.000000 0.074200 ]
+      # Centre of mass moved 5 cm forward (was x 0): with it on the axle the
+      # whole robot balanced on its wheels and leaned back onto the rear
+      # caster whenever it drove, which reads as a 3.6 deg slope on the IMU.
+      centerOfMass [ 0.050000 0.000000 0.074200 ]
       inertiaMatrix [
         1.615520e-02 1.615520e-02 3.093040e-02
         0.000000e+00 0.000000e+00 0.000000e+00

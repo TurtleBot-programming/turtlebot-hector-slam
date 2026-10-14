@@ -2,13 +2,16 @@
 """Webots <-> ROS 2 bridge for the TurtleBot 4 proto (extern controller).
 
 Run it with the system ROS 2 Python (see ../../run_sim.sh):
-  publishes  /clock, /scan, /odom, /tf (odom->base_link), /tf_static,
-             /ground_truth/pose (start-relative, i.e. in Hector's map frame)
+  publishes  /clock, /scan, /odom, /imu, /tf (odom->base_link), /tf_static,
+             /ground_truth/pose (start-relative, i.e. in Hector's map frame;
+             z is the height above the start floor)
   subscribes /cmd_vel
 With --patrol the robot ignores /cmd_vel and drives the waypoint loop from
-tools/layout.py so SLAM runs are repeatable.
+the layout module (--layout, default tools/layout.py) so SLAM runs are
+repeatable.
 """
 import argparse
+import importlib
 import math
 import os
 import sys
@@ -19,12 +22,11 @@ from geometry_msgs.msg import PoseStamped, Twist, TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.qos import qos_profile_sensor_data
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import Imu, LaserScan
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 '..', '..', 'tools'))
-from layout import PATROL  # noqa: E402
 
 WHEEL_RADIUS = 0.03575
 WHEEL_SEPARATION = 0.233
@@ -46,7 +48,7 @@ class Bridge:
     def __init__(self, patrol, lidar_period_ms, reverse_scan):
         self.robot = Robot()
         self.dt = int(self.robot.getBasicTimeStep())
-        self.patrol = patrol
+        self.patrol = patrol  # list of (x, y) waypoints, or None
         self.reverse_scan = reverse_scan
 
         self.left = self.robot.getDevice('left_wheel_joint')
@@ -62,8 +64,10 @@ class Bridge:
         self.lidar.enable(lidar_period_ms)
         self.gps = self.robot.getDevice('p3d gps')
         self.imu = self.robot.getDevice('p3d inertial')
+        self.gyro = self.robot.getDevice('p3d gyro')
         self.gps.enable(self.dt)
         self.imu.enable(self.dt)
+        self.gyro.enable(self.dt)
 
         rclpy.init()
         self.node = rclpy.create_node('tb4_webots_bridge')
@@ -72,6 +76,8 @@ class Bridge:
         self.scan_pub = self.node.create_publisher(
             LaserScan, 'scan', qos_profile_sensor_data)
         self.odom_pub = self.node.create_publisher(Odometry, 'odom', 10)
+        self.imu_pub = self.node.create_publisher(
+            Imu, 'imu', qos_profile_sensor_data)
         self.gt_pub = self.node.create_publisher(
             PoseStamped, 'ground_truth/pose', 10)
         self.tf = TransformBroadcaster(self.node)
@@ -83,6 +89,8 @@ class Bridge:
         self.prev = None
         self.origin = None  # (x, y, yaw) of the robot at start, world frame
         self.wp = 0
+        self.slam_since = None
+        self.waiting_logged = False
         self.stamp = None
 
     # -- ROS side ---------------------------------------------------------
@@ -109,14 +117,30 @@ class Bridge:
 
     # -- sensing ----------------------------------------------------------
     def ground_truth(self):
-        gx, gy, _ = self.gps.getValues()
+        gx, gy, gz = self.gps.getValues()
         yaw = self.imu.getRollPitchYaw()[2]
         if self.origin is None:
-            self.origin = (gx, gy, yaw)
-        ox, oy, oyaw = self.origin
+            self.origin = (gx, gy, gz, yaw)
+        ox, oy, oz, oyaw = self.origin
         dx, dy = gx - ox, gy - oy
         c, s = math.cos(-oyaw), math.sin(-oyaw)
-        return c * dx - s * dy, s * dx + c * dy, wrap(yaw - oyaw), (gx, gy, yaw)
+        return (c * dx - s * dy, s * dx + c * dy, gz - oz, wrap(yaw - oyaw),
+                (gx, gy, yaw))
+
+    def publish_imu(self, stamp):
+        # Orientation in the world frame (like the Create 3 IMU), angular
+        # velocity in the body frame; no accelerometer on the proto.
+        m = Imu()
+        m.header.stamp = stamp
+        m.header.frame_id = 'base_link'
+        qx, qy, qz, qw = self.imu.getQuaternion()
+        m.orientation.x, m.orientation.y = qx, qy
+        m.orientation.z, m.orientation.w = qz, qw
+        wx, wy, wz = self.gyro.getValues()
+        m.angular_velocity.x, m.angular_velocity.y = wx, wy
+        m.angular_velocity.z = wz
+        m.linear_acceleration_covariance[0] = -1.0
+        self.imu_pub.publish(m)
 
     def update_odom(self):
         l, r = self.left_s.getValue(), self.right_s.getValue()
@@ -177,20 +201,32 @@ class Bridge:
     # -- control ----------------------------------------------------------
     def patrol_cmd(self, gx, gy, gyaw):
         """Go-to-goal on the ground-truth pose (world frame)."""
-        if self.wp >= len(PATROL):
+        if self.wp >= len(self.patrol):
             return 0.0, 0.0
-        tx, ty = PATROL[self.wp]
+        tx, ty = self.patrol[self.wp]
         dx, dy = tx - gx, ty - gy
         dist = math.hypot(dx, dy)
         if dist < 0.15:
             self.wp += 1
-            if self.wp >= len(PATROL):
+            if self.wp >= len(self.patrol):
                 self.node.get_logger().info('Patrol finished')
             return 0.0, 0.0
         err = wrap(math.atan2(dy, dx) - gyaw)
         if abs(err) > 0.3:
             return 0.0, max(-0.6, min(0.6, 1.5 * err))
         return 0.25 * max(0.3, math.cos(err)), max(-0.5, min(0.5, 1.5 * err))
+
+    def slam_ready(self):
+        """Hold the patrol until SLAM publishes /map (+3 s): odometry that
+        drifted before SLAM starts would tilt the whole map frame."""
+        if self.slam_since is None:
+            if self.node.count_publishers('/map') == 0:
+                if not self.waiting_logged:
+                    self.node.get_logger().info('Patrol waits for SLAM (/map)...')
+                    self.waiting_logged = True
+                return False
+            self.slam_since = self.robot.getTime()
+        return self.robot.getTime() - self.slam_since > 3.0
 
     def drive(self, v, w):
         vl = (v - w * WHEEL_SEPARATION / 2) / WHEEL_RADIUS
@@ -205,8 +241,8 @@ class Bridge:
             clock.clock = self.now()
             self.clock_pub.publish(clock)
 
-            rx, ry, ryaw, (gx, gy, gyaw) = self.ground_truth()
-            if self.patrol:
+            rx, ry, rz, ryaw, (gx, gy, gyaw) = self.ground_truth()
+            if self.patrol and self.slam_ready():
                 self.cmd = self.patrol_cmd(gx, gy, gyaw)
             self.drive(*self.cmd)
 
@@ -215,9 +251,11 @@ class Bridge:
             gt.header.stamp = clock.clock
             gt.header.frame_id = 'map'
             gt.pose.position.x, gt.pose.position.y = rx, ry
+            gt.pose.position.z = rz
             q = yaw_quat(ryaw)
             gt.pose.orientation.z, gt.pose.orientation.w = q[2], q[3]
             self.gt_pub.publish(gt)
+            self.publish_imu(clock.clock)
 
             t = self.robot.getTime()
             period = self.lidar.getSamplingPeriod() / 1000.0
@@ -233,10 +271,14 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--patrol', action='store_true',
                     help='drive the built-in waypoint loop, ignore /cmd_vel')
+    ap.add_argument('--layout', default='layout',
+                    help='module in tools/ with the PATROL waypoints '
+                         '(layout, layout_2floor)')
     ap.add_argument('--lidar-period-ms', type=int, default=100)
     ap.add_argument('--no-reverse-scan', dest='reverse_scan',
                     action='store_false',
                     help='publish Webots ranges in their native (clockwise) '
                          'order; this mirrors the scan, debugging only')
     a = ap.parse_args()
-    Bridge(a.patrol, a.lidar_period_ms, a.reverse_scan).run()
+    patrol = importlib.import_module(a.layout).PATROL if a.patrol else None
+    Bridge(patrol, a.lidar_period_ms, a.reverse_scan).run()

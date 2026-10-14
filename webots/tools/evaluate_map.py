@@ -2,25 +2,30 @@
 """Compare a saved SLAM map with the Webots ground truth and a pose log.
 
   python3 evaluate_map.py MAP.yaml [--pose-log pose_error.csv] [--plot out.png]
+  python3 evaluate_map.py floor2.yaml --layout layout_2floor \
+      --gt ../maps/two_floor_f2.yaml --pose-log pose.csv --floor 2
 
 MAP.yaml is a map_saver_cli map in Hector's map frame, which starts at the
-robot spawn pose (layout.START). Each occupied SLAM cell is moved into the
-world frame and scored against ../maps/ground_truth.pgm:
+robot spawn pose (START of the --layout module). Each occupied SLAM cell is
+moved into the world frame and scored against the ground-truth map (--gt,
+default ../maps/ground_truth.yaml):
   precision  occupied SLAM cells within --tol of a true wall/obstacle
   recall     true wall cells (visible from inside the room) within --tol of
              an occupied SLAM cell
   coverage   true free cells inside the room that the SLAM map marks free
 The pose log is the CSV written by pose_logger.py (map->base_link vs
-/ground_truth/pose).
+/ground_truth/pose); --floor keeps only the rows logged on that floor.
 """
 import argparse
 import csv
+import importlib
 import math
 import os
 
 import numpy as np
 import yaml
-from layout import START
+
+START = (0.0, 0.0, 0.0)   # spawn pose, set from --layout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -96,11 +101,17 @@ def main():
     ap.add_argument('map')
     ap.add_argument('--pose-log')
     ap.add_argument('--plot', help='write an overlay figure (needs matplotlib)')
+    ap.add_argument('--layout', default='layout',
+                    help='layout module with the spawn pose (layout, layout_2floor)')
+    ap.add_argument('--gt', default=os.path.join(HERE, '..', 'maps', 'ground_truth.yaml'),
+                    help='ground-truth map yaml (world frame)')
+    ap.add_argument('--floor', type=int, help='only use pose-log rows from this floor')
     ap.add_argument('--tol', type=float, default=0.10, help='match tolerance [m]')
     a = ap.parse_args()
+    global START
+    START = importlib.import_module(a.layout).START
 
-    gt_occ, gt_free, gt_res, gt_org = load_map(
-        os.path.join(HERE, '..', 'maps', 'ground_truth.yaml'))
+    gt_occ, gt_free, gt_res, gt_org = load_map(a.gt)
     occ, free, res, org = load_map(a.map)
 
     # Only the inside of the room is observable: flood fill free space from
@@ -137,6 +148,8 @@ def main():
     if a.pose_log:
         with open(a.pose_log) as f:
             rows = list(csv.DictReader(f))
+        if a.floor is not None:
+            rows = [r for r in rows if int(r.get('floor', 1)) == a.floor]
         exy = np.array([float(r['err_xy']) for r in rows])
         eyaw = np.degrees([float(r['err_yaw']) for r in rows])
         dur = float(rows[-1]['t']) - float(rows[0]['t'])
@@ -173,8 +186,9 @@ def plot(path, gt_occ, gt_res, gt_org, x, y, rows):
     ax.set_aspect('equal')
     ax.set_xlabel('x [m] (world)')
     ax.set_ylabel('y [m] (world)')
-    ax.set_xlim(-5.6, 5.6)
-    ax.set_ylim(-4.6, 4.6)
+    h, w = gt_occ.shape
+    ax.set_xlim(gt_org[0], gt_org[0] + w * gt_res)
+    ax.set_ylim(gt_org[1], gt_org[1] + h * gt_res)
     ax.grid(alpha=0.3, lw=0.5)
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=2,
               frameon=False, markerscale=4)

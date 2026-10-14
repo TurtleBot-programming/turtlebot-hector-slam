@@ -7,14 +7,16 @@ find_package(rclcpp_action REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 
 add_executable(frontier_explorer src/frontier_explorer.cpp)
 target_compile_features(frontier_explorer PUBLIC cxx_std_17)
 ament_target_dependencies(frontier_explorer
-  rclcpp rclcpp_action nav_msgs nav2_msgs geometry_msgs tf2 tf2_ros)
+  rclcpp rclcpp_action nav_msgs nav2_msgs geometry_msgs std_msgs tf2 tf2_ros)
 install(TARGETS frontier_explorer DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/floor_manager.py DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY
   launch

@@ -1,5 +1,12 @@
 # Handover: Hector SLAM + Nav2 on TurtleBot 4
 
+> **Update 2026-10-14:** the full pipeline now runs end-to-end in Webots (SLAM +
+> Nav2 + frontier explorer, ~3 cm localisation error, 99 % wall precision). The
+> fixes are listed in the top-level README (Setup, Known limitations). The
+> "not tested" items below are done for simulation; only the physical-robot
+> checklist is still open. Hector needs a second patch on top of the QoS one:
+> the `base_link -> laser` transform is now applied to each scan.
+
 State of the project when moved to a Webots-enabled machine (2026-10-13).
 Goal: map and navigate with Hector SLAM + Nav2 in Webots, then run the same
 launch files on the physical TurtleBot 4 (ROS 2 Humble).

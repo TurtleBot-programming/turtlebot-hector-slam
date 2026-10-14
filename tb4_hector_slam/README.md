@@ -18,7 +18,7 @@ the robot already publishes, and adds `map -> odom`.
 - `config/hector_slam.yaml` — Hector mapping and trajectory server parameters.
 - `config/nav2.yaml` — Nav2 parameters (from `turtlebot4_navigation`, global costmap fed by Hector's `/map`).
 - `rviz/hector_slam.rviz` — RViz config (map, scan, TF, trajectory).
-- `map/` — place saved maps here.
+- `map/` — saved maps; `hector_map.*` + `pose_error.csv` are the reference autonomous-exploration run (see the top-level README for results).
 
 ## Dependencies
 
@@ -97,4 +97,6 @@ subscription never matches. This is applied in `hector_slam_humble`
 
 - Disable other nodes publishing `map -> odom` (e.g. the TurtleBot 4 `slam_toolbox`/`nav2` localisation) while Hector runs.
 - Tune `laser_min_dist`/`laser_max_dist`, `map_resolution` and the update thresholds in `config/hector_slam.yaml`.
-- Builds and launches cleanly; not yet tested end-to-end against the Webots bridge or hardware.
+- Tested end-to-end in Webots (SLAM + Nav2 + explorer, 2026-10-14); not yet tested on hardware.
+- `hector_mapping` must also include the laser-transform fix (applies `base_link -> laser` to each scan); without it the rotated TB4 lidar makes the pose drift sideways.
+- Full run guide, results and troubleshooting: [top-level README](../README.md).

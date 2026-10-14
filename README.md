@@ -1,80 +1,79 @@
 # TurtleBot Hector SLAM
 
-Case study for **ICTE4001** (Curtin Colombo, Year 3). The project explores
-2D mapping and localisation for a TurtleBot using Hector SLAM, with the robot
-simulated in [Webots](https://cyberbotics.com/).
+Case study for **ICTE4001** (Curtin Colombo, Year 3): Hector SLAM on a
+TurtleBot 4, integrated with Nav2 for autonomous navigation and frontier
+exploration. The robot is simulated in [Webots](https://cyberbotics.com/); the
+same launch files run on the physical TurtleBot 4.
+
+![Hector map and trajectory vs ground truth](docs/images/map_vs_ground_truth.png)
+
+*Autonomous exploration run: Hector's map (blue) over the true walls (grey),
+Hector's pose estimate (dashed) over the true trajectory (black).*
 
 ## Repository structure
 
-```
-.
-├── docs/      Project documentation (reports, notes, diagrams)
-├── tb4_hector_slam/  ROS 2 package: Hector SLAM on the TurtleBot 4
-├── webots/    Webots simulation files (worlds, controllers, protos)
-└── README.md
-```
-
 | Folder | Purpose |
 | ------ | ------- |
-| [`docs/`](docs/) | Written documentation for the case study |
-| [`tb4_hector_slam/`](tb4_hector_slam/) | ROS 2 package launching Hector SLAM on the TurtleBot 4 |
-| [`webots/`](webots/) | Webots worlds, robot controllers and related assets |
+| [`tb4_hector_slam/`](tb4_hector_slam/) | ROS 2 package: launch files, Hector + Nav2 config, RViz config, frontier explorer, saved maps |
+| [`webots/`](webots/) | Webots world, TurtleBot 4 PROTO, ROS 2 bridge controller, ground-truth map, evaluation tools |
+| [`docs/`](docs/) | Case study brief, figures |
 
-## Getting started
+How the pieces connect:
 
-### Prerequisites
-
-- [Webots](https://cyberbotics.com/#download) (R2023b or newer recommended)
-- ROS with the `hector_slam` package, if running SLAM outside Webots
-
-### Clone
-
-```bash
-git clone https://github.com/TurtleBot-programming/turtlebot-hector-slam.git
-cd turtlebot-hector-slam
+```
+Webots (hector_slam_test.wbt)
+   │  extern controller
+tb4_ros2_bridge.py ── /scan, /odom, TF odom→base_link, /clock, /ground_truth/pose
+   │                ◄─ /cmd_vel
+hector_mapping ────── /map, TF map→odom, /slam_out_pose
+   │
+Nav2 (planner, DWB controller, BT navigator, costmaps on /map + /scan)
+   │  navigate_to_pose
+frontier_explorer ─── picks the nearest reachable frontier on /map
 ```
 
-## Runbook
+## Setup (once)
 
-All commands assume ROS 2 Humble. Each numbered block is a separate terminal.
-Status: build + sim + Hector `/map` were seen working; Nav2 + explorer
-end-to-end is **still untested** (see "Known issues").
-
-### 1. Build (once, and after any change to config/launch/source)
-
-Hector SLAM (`hector_slam_humble`, with the best-effort `/scan` QoS patch in
-`HectorMappingRos.cpp`) must be built first, e.g. in `~/hector_ws`:
+Tested on Ubuntu 22.04, ROS 2 Humble, Webots R2025a (snap).
 
 ```bash
+sudo apt install ros-humble-navigation2 ros-humble-nav2-bringup \
+                 ros-humble-turtlebot4-description ros-humble-irobot-create-description \
+                 ros-humble-teleop-twist-keyboard python3-matplotlib
+sudo snap install webots
+```
+
+### 1. Build Hector SLAM
+
+Use the [TurtleBot-programming `hector_slam_humble`](https://github.com/TurtleBot-programming/hector_slam_humble)
+fork. It has two fixes that are required here. Without the first, Hector gets
+no scans. Without the second, the pose drifts sideways and the map is wrong.
+
+- `/scan` subscription uses sensor-data (best-effort) QoS, matching the RPLIDAR and the Webots bridge.
+- The `base_link → laser` transform is applied to every scan. The TB4 lidar is yawed 90°, and the original ROS 2 port ignored that.
+
+```bash
+mkdir -p ~/hector_ws/src && cd ~/hector_ws
+git clone -b humble https://github.com/TurtleBot-programming/hector_slam_humble.git src
 source /opt/ros/humble/setup.bash
-source ~/hector_ws/install/setup.bash          # patched hector_mapping
+colcon build
+```
+
+### 2. Build this package
+
+```bash
+cd ~ && git clone https://github.com/TurtleBot-programming/turtlebot-hector-slam.git
 mkdir -p ~/tb4_slam_ws/src && cd ~/tb4_slam_ws
 ln -sfn ~/turtlebot-hector-slam/tb4_hector_slam src/tb4_hector_slam
+source /opt/ros/humble/setup.bash
+source ~/hector_ws/install/setup.bash
 colcon build --symlink-install --packages-select tb4_hector_slam
-source install/setup.bash
 ```
 
-`--symlink-install` matters: without it the installed `nav2.yaml` is a stale
-copy and config edits are silently ignored.
+`--symlink-install` matters: without it config edits are not picked up until
+the next build. Rebuild after changing C++ (`frontier_explorer.cpp`).
 
-### 2. Start the Webots simulation (terminal 1)
-
-```bash
-cd ~/turtlebot-hector-slam
-chmod +x webots/run_sim.sh webots/protos/setup_meshes.sh   # first time only
-./webots/run_sim.sh               # GUI, drive via /cmd_vel
-./webots/run_sim.sh --headless    # no GUI
-./webots/run_sim.sh --patrol      # built-in waypoint loop (do NOT combine with explore:=true)
-```
-
-The first run copies the TurtleBot 4 meshes from `/opt/ros/humble/share`. The
-Webots snap cannot read `/media` or `/mnt`, so the script stages a copy in
-`~/tb4_hector_webots`. Check it works: `ros2 topic list` shows `/clock`,
-`/scan`, `/odom`, `/tf`, `/cmd_vel`, `/ground_truth/pose`.
-
-### 3. Pick one mode (terminal 2)
-
-Source the environment in every new terminal first:
+### 3. Environment for every ROS terminal
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -82,58 +81,124 @@ source ~/hector_ws/install/setup.bash
 source ~/tb4_slam_ws/install/setup.bash
 ```
 
-| Mode | Command |
+## Running
+
+Each block is a separate terminal. Always start the simulation first.
+
+### Terminal 1: simulation
+
+```bash
+cd ~/turtlebot-hector-slam
+./webots/run_sim.sh               # Webots GUI + ROS 2 bridge, robot driven by /cmd_vel
+./webots/run_sim.sh --headless    # no GUI (faster, for batch runs)
+./webots/run_sim.sh --patrol      # robot drives a fixed waypoint loop by itself
+```
+
+The first run copies the TurtleBot 4 meshes from `/opt/ros/humble/share`.
+Wait for `extern controller: connected` in the output. Then check
+`ros2 topic hz /scan` (~10 Hz).
+
+Each start of `run_sim.sh` reloads the world, so the robot is back at its spawn
+pose and the map starts empty. To start mapping from scratch, stop everything
+(see [Stopping](#stopping)) and start again from terminal 1.
+
+### Terminal 2: pick one mode
+
+| Goal | Command |
 | ---- | ------- |
-| SLAM only (+ RViz) | `ros2 launch tb4_hector_slam hector_slam_launch.py use_sim_time:=true` |
-| Nav2 only | `ros2 launch tb4_hector_slam navigation_launch.py use_sim_time:=true` |
-| SLAM + Nav2 + RViz (click **2D Goal Pose**) | `ros2 launch tb4_hector_slam slam_nav_launch.py use_sim_time:=true` |
-| SLAM + Nav2 + autonomous exploration | `ros2 launch tb4_hector_slam slam_nav_launch.py use_sim_time:=true explore:=true` |
-| Physical TurtleBot 4 | `ros2 launch tb4_hector_slam slam_nav_launch.py` (`use_sim_time` stays `false`; add `namespace:=/<ns>` if needed) |
+| **Autonomous mapping** (SLAM + Nav2 + frontier explorer + RViz) | `ros2 launch tb4_hector_slam slam_nav_launch.py use_sim_time:=true explore:=true` |
+| Mapping + navigation, goals clicked in RViz (**Nav2 Goal**) | `ros2 launch tb4_hector_slam slam_nav_launch.py use_sim_time:=true` |
+| Mapping only, drive by keyboard | `ros2 launch tb4_hector_slam hector_slam_launch.py use_sim_time:=true` then `ros2 run teleop_twist_keyboard teleop_twist_keyboard` in another terminal |
+| Mapping only, scripted route | `./webots/run_sim.sh --patrol` in terminal 1 + `hector_slam_launch.py use_sim_time:=true` |
+| Nav2 only (SLAM started separately) | `ros2 launch tb4_hector_slam navigation_launch.py use_sim_time:=true` |
 
-Other launch args: `use_rviz`, `rviz_config`, `params_file`, `log_level`.
+Do not combine `--patrol` with Nav2/`explore:=true`, since both would drive the robot.
 
-Manual driving (SLAM only mode):
+Other launch arguments: `use_rviz:=false`, `rviz_config`, `params_file`,
+`namespace`, `log_level`.
 
-```bash
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
-```
+In autonomous mode the explorer logs `Exploring towards frontier (x, y)` for
+each goal. It stops with `No reachable frontiers left: exploration complete`
+(about 3 min of sim time for the test world).
 
-### 4. Check things are alive
-
-```bash
-ros2 topic info /scan -v | grep -B1 -A3 hector     # hector_mapping subscriber must be BEST_EFFORT
-ros2 run tf2_ros tf2_echo map odom                 # Hector's map -> odom
-ros2 topic hz /map
-ros2 lifecycle get /bt_navigator                   # expect: active [3]
-ros2 node info /global_costmap/global_costmap | grep -A6 Subscribers   # must list /map and /scan (not /global_costmap/map)
-```
-
-### 5. Save the map and compare with ground truth
+### Terminal 3 (optional): record localisation error
 
 ```bash
-ros2 run nav2_map_server map_saver_cli -f ~/turtlebot-hector-slam/tb4_hector_slam/map/my_map
-# reference map: webots/maps/ground_truth.{pgm,yaml}; true robot pose on /ground_truth/pose
+python3 ~/turtlebot-hector-slam/webots/tools/pose_logger.py ~/pose_error.csv
 ```
 
-### 6. Stop everything
+This logs Hector's pose (`map → base_link`) against the simulator ground truth
+once per second. Start it right after the launch and stop it with `Ctrl+C`.
 
-`Ctrl+C` the launch terminals, then close Webots (or in headless mode kill
-`webots-bin`). Stray nodes from earlier runs can linger
-(`pgrep -fa "nav2|hector|rviz2"`), kill them before relaunching.
+### Save and evaluate the map
 
-### Known issues / things to verify
+```bash
+ros2 run nav2_map_server map_saver_cli -f ~/turtlebot-hector-slam/tb4_hector_slam/map/my_map \
+    --ros-args -p use_sim_time:=true
+python3 ~/turtlebot-hector-slam/webots/tools/evaluate_map.py \
+    ~/turtlebot-hector-slam/tb4_hector_slam/map/my_map.yaml \
+    --pose-log ~/pose_error.csv --plot ~/map_vs_ground_truth.png
+```
 
-- Nav2 costmaps previously subscribed to `/global_costmap/map` and
-  `/global_costmap/scan`, so the global costmap never got the map and every
-  explorer goal timed out. `config/nav2.yaml` now uses absolute `/map` and
-  `/scan`; **this fix is not yet verified**. This also means a namespaced
-  robot needs topic remaps.
-- Explorer thresholds (`min_frontier_cells`, `goal_clearance`, `blacklist_radius`,
-  `min_goal_distance`, `goal_timeout`) are untuned guesses.
-- Hector `map_size: 2048` at 0.05 m is a ~4 MB message; shrink it if the map is slow to reach Nav2.
-- Not tested on the physical robot. See `HANDOVER.md` for the checklist.
+`evaluate_map.py` compares the map with `webots/maps/ground_truth.pgm` and
+prints wall precision/recall, free-space coverage and pose error. `--plot`
+writes the overlay figure shown at the top.
+
+### Stopping
+
+`Ctrl+C` the launch terminal(s), then the `run_sim.sh` terminal (this closes
+Webots). Check nothing is left over before the next run:
+
+```bash
+pgrep -fa "nav2|hector|rviz2|frontier_explorer|tb4_ros2_bridge"
+```
+
+### Physical TurtleBot 4
+
+Same launch files, without `use_sim_time`:
+
+1. Laptop and robot on the same `ROS_DOMAIN_ID` and RMW; `ros2 topic list` shows `/scan`, `/odom`, `/tf`.
+2. Undock, and stop anything else publishing `map → odom` (stock `turtlebot4_navigation` SLAM/localisation).
+3. `ros2 launch tb4_hector_slam slam_nav_launch.py` (add `namespace:=/<ns>` for a namespaced robot, `explore:=true` for autonomous mapping).
+4. Drive slowly at first. Hector uses scan matching only, so fast turns smear the map.
+
+## Results (Webots, autonomous exploration)
+
+Run of 2026-10-14: `slam_nav_launch.py explore:=true`, from spawn to "exploration
+complete" in ~195 s sim time. Map: [`tb4_hector_slam/map/hector_map.*`](tb4_hector_slam/map/),
+pose log: [`tb4_hector_slam/map/pose_error.csv`](tb4_hector_slam/map/pose_error.csv).
+
+| Metric | Value |
+| ------ | ----- |
+| Wall precision (map wall within 10 cm of a true wall) | 99.2 % |
+| Wall recall (true wall within 10 cm of a map wall) | 98.9 % |
+| Free space mapped | 97.5 % |
+| Mean wall offset | 2.3 cm |
+| Position error: mean / RMSE / max | 2.8 / 3.6 / 7.5 cm |
+| Heading error: mean / max | 1.8° / 12.4° |
+
+The heading-error peaks come from turning on the spot. The logger compares the
+latest TF with the latest ground truth, so the ~0.1 s scan interval shows up as
+error while the robot rotates at up to 1 rad/s.
+
+## Known limitations and troubleshooting
+
+| Symptom | Cause / fix |
+| ------- | ----------- |
+| `/map` stays empty | `hector_mapping` built without the QoS fix. `ros2 topic info /scan -v` must show the hector subscriber as `BEST_EFFORT`. |
+| Map is skewed and the robot drifts sideways in the map | `hector_mapping` built without the laser-transform fix (see Setup step 1). |
+| `Transform data too old when converting from odom to map` | Hector publishes `map → odom` once per scan (~0.1–0.3 s old). `transform_tolerance` is 0.5 s in `config/nav2.yaml`; don't lower it. |
+| Mirrored map / robot wobbles in place | The scan must be reversed (Webots orders rays clockwise). This is the default in the bridge; `--no-reverse-scan` turns it off for debugging only. |
+| Nothing moves, TF lookups time out | Missing `use_sim_time:=true` in simulation. |
+| RViz freezes or is killed | Very large maps. `map_size` is 512 (25.6 m); raise it only for larger spaces. |
+| Explorer goal times out | Unreachable frontiers are blacklisted after `goal_timeout` (60 s), and the explorer moves on. Thresholds in `frontier_explorer.cpp` parameters are tuned for this world only. |
+| Stale nodes from an earlier run | `pgrep -fa "nav2\|hector\|rviz2"`, then kill them before relaunching. |
+
+General limitations of Hector SLAM: there is no loop closure and no odometry
+in the scan matcher. It relies on a fast, accurate lidar, and it degrades in
+long featureless corridors and under fast rotation. Not yet tested on the
+physical robot.
 
 ## Contributing
 
-Create a branch, commit your changes with a clear message, and open a pull
-request against `main`.
+Create a branch, commit with a clear message, and open a pull request against `main`.

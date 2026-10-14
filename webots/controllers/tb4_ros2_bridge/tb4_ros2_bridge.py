@@ -28,7 +28,7 @@ from layout import PATROL  # noqa: E402
 
 WHEEL_RADIUS = 0.03575
 WHEEL_SEPARATION = 0.233
-MAX_WHEEL_SPEED = 20.0  # rad/s
+MAX_WHEEL_SPEED = 10.0  # rad/s, maxVelocity of the proto wheel motors
 # rplidar_link pose in base_link, taken from the proto
 LIDAR_XYZ = (-0.04, 0.0, 0.1929)
 LIDAR_YAW = math.pi / 2

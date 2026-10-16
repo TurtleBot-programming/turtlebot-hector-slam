@@ -16,6 +16,7 @@ def generate_launch_description():
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_rviz = LaunchConfiguration('use_rviz')
+    nav2_params_file = LaunchConfiguration('nav2_params_file')
 
     slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -32,12 +33,14 @@ def generate_launch_description():
         launch_arguments={
             'namespace': namespace,
             'use_sim_time': use_sim_time,
+            'nav2_params_file': nav2_params_file,
         }.items())
 
     explorer = Node(
         package='tb4_hector_slam',
         executable='frontier_explorer',
         name='frontier_explorer',
+        namespace=namespace,
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
         remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static')],
@@ -47,6 +50,10 @@ def generate_launch_description():
         DeclareLaunchArgument('namespace', default_value=''),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('use_rviz', default_value='true'),
+        DeclareLaunchArgument(
+            'nav2_params_file',
+            default_value=os.path.join(pkg_dir, 'config', 'nav2.yaml'),
+            description='Full path to the Nav2 parameters file'),
         DeclareLaunchArgument(
             'explore', default_value='false',
             description='Start the frontier explorer (autonomous mapping)'),

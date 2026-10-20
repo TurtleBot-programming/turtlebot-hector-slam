@@ -24,7 +24,7 @@ How the pieces connect:
 Webots (hector_slam_test.wbt)
    │  extern controller
 tb4_ros2_bridge.py ── /scan, /odom, TF odom→base_link, /clock, /ground_truth/pose
-   │                ◄─ /cmd_vel
+   │                ◄─ /cmd_vel_unstamped
 hector_mapping ────── /map, TF map→odom, /slam_out_pose
    │
 Nav2 (planner, DWB controller, BT navigator, costmaps on /map + /scan)
@@ -34,7 +34,18 @@ frontier_explorer ─── picks the nearest reachable frontier on /map
 
 ## Setup (once)
 
-Tested on Ubuntu 22.04, ROS 2 Humble, Webots R2025a (snap).
+Developed on Ubuntu 22.04, ROS 2 Humble, Webots R2025a (snap). **ROS 2 Jazzy
+(Ubuntu 24.04) is also supported**: replace `humble` with `jazzy` in the
+commands below (apt packages, `setup.bash`). `run_sim.sh` and
+`setup_meshes.sh` now default to `/opt/ros/jazzy`; for Humble set
+`ROS_SETUP=/opt/ros/humble/setup.bash` / `ROS_ROOT=/opt/ros/humble`.
+
+**Velocity topic.** On Jazzy the Create 3 takes `/cmd_vel` as `TwistStamped`
+and `geometry_msgs/Twist` on `/cmd_vel_unstamped`. Nav2's final output, the
+frontier explorer and the Webots bridge therefore all use `/cmd_vel_unstamped`
+(`navigation_launch.py` has a `cmd_vel_topic` argument to change it). Teleop:
+`ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_unstamped`.
+The Jazzy build of `hector_slam_humble` has not been tested.
 
 ```bash
 sudo apt install ros-humble-navigation2 ros-humble-nav2-bringup \

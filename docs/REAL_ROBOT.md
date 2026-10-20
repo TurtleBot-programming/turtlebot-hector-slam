@@ -11,11 +11,11 @@ no Webots, no `use_sim_time`, and a network between the laptop and the robot.
 TurtleBot 4 (Raspberry Pi + Create 3)           Laptop
   RPLIDAR A1  ── /scan  (best-effort) ───────►  hector_mapping ─► /map, map→odom
   Create 3    ── /odom, TF odom→base_link ───►  Nav2 (planner, controller, costmaps)
-              ◄─ /cmd_vel ───────────────────   frontier_explorer (optional), RViz
+              ◄─ /cmd_vel_unstamped ───────────────────   frontier_explorer (optional), RViz
 ```
 
 Hector, Nav2 and RViz run on the **laptop**. The robot only publishes sensors
-and executes `/cmd_vel`.
+and executes `/cmd_vel_unstamped`.
 
 ---
 
@@ -82,7 +82,7 @@ cat /etc/turtlebot4/setup.bash 2>/dev/null     # robot-wide settings, if present
 Check that the laptop sees the robot:
 
 ```bash
-ros2 topic list                  # must show /scan /odom /tf /tf_static /cmd_vel
+ros2 topic list                  # must show /scan /odom /tf /tf_static /cmd_vel_unstamped
 ros2 topic hz /scan              # expect ~10 Hz, steady
 ros2 topic hz /odom              # expect ~20 Hz
 ros2 run tf2_tools view_frames   # odom -> base_link must exist
@@ -204,7 +204,7 @@ The explorer logs `Exploring towards frontier (x, y)`. It ends with
 time. On real floors expect this to take several times longer than the ~3 min
 in simulation.
 
-Do not run teleop at the same time as Nav2 (both publish `/cmd_vel`).
+Do not run teleop at the same time as Nav2 (both publish `/cmd_vel_unstamped`).
 
 ### Save the map
 
@@ -383,7 +383,7 @@ Fastest first:
 3. Power the robot off (hold the power button).
 
 Keep a second terminal open with the teleop node ready, but remember teleop and
-Nav2 both publish `/cmd_vel` and must not run together.
+Nav2 both publish `/cmd_vel_unstamped` and must not run together.
 
 ---
 

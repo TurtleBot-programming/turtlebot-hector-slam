@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Start Webots with the SLAM test world and the ROS 2 bridge controller.
-#   ./run_sim.sh            # drive with teleop (/cmd_vel)
+#   ./run_sim.sh            # drive with teleop (/cmd_vel_unstamped_unstamped)
 #   ./run_sim.sh --patrol   # drive the built-in waypoint loop
 #   ./run_sim.sh --headless # no GUI (xvfb, fast mode)
 #   ./run_sim.sh --world two_floor   # two-floor building with ramps
 set -eo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-source "${ROS_SETUP:-/opt/ros/humble/setup.bash}"
+source "${ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 
 export WEBOTS_HOME="${WEBOTS_HOME:-/snap/webots/current/usr/share/webots}"
 export PYTHONPATH="$WEBOTS_HOME/lib/controller/python:${PYTHONPATH:-}"

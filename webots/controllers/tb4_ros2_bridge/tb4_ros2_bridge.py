@@ -5,8 +5,8 @@ Run it with the system ROS 2 Python (see ../../run_sim.sh):
   publishes  /clock, /scan, /odom, /imu, /tf (odom->base_link), /tf_static,
              /ground_truth/pose (start-relative, i.e. in Hector's map frame;
              z is the height above the start floor)
-  subscribes /cmd_vel
-With --patrol the robot ignores /cmd_vel and drives the waypoint loop from
+  subscribes /cmd_vel_unstamped
+With --patrol the robot ignores /cmd_vel_unstamped and drives the waypoint loop from
 the layout module (--layout, default tools/layout.py) so SLAM runs are
 repeatable.
 """
@@ -71,7 +71,7 @@ class Bridge:
 
         rclpy.init()
         self.node = rclpy.create_node('tb4_webots_bridge')
-        self.node.create_subscription(Twist, 'cmd_vel', self.on_cmd, 10)
+        self.node.create_subscription(Twist, 'cmd_vel_unstamped', self.on_cmd, 10)
         self.clock_pub = self.node.create_publisher(Clock, '/clock', 10)
         self.scan_pub = self.node.create_publisher(
             LaserScan, 'scan', qos_profile_sensor_data)
@@ -270,7 +270,7 @@ class Bridge:
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--patrol', action='store_true',
-                    help='drive the built-in waypoint loop, ignore /cmd_vel')
+                    help='drive the built-in waypoint loop, ignore /cmd_vel_unstamped')
     ap.add_argument('--layout', default='layout',
                     help='module in tools/ with the PATROL waypoints '
                          '(layout, layout_2floor)')

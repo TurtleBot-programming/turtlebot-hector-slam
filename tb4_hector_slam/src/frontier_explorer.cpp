@@ -9,7 +9,7 @@
 // current floor's map and /floor says which floor that is. When a floor has
 // no frontiers left, the robot drives to the entry of the nearest ramp that
 // leads to an unexplored floor (Nav2), lines up with it, and climbs or
-// descends it with a simple heading + cross-track controller on /cmd_vel:
+// descends it with a simple heading + cross-track controller on /cmd_vel_unstamped:
 // to a horizontal 2D lidar a ramp looks like a wall, so Nav2 cannot plan
 // onto it. It then explores that floor, and so on until every floor is done.
 
@@ -92,7 +92,7 @@ public:
           if (m->data && !on_ramp_) {on_ramp_since_ = now();}
           on_ramp_ = m->data;
         });
-      cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+      cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel_unstamped", 10);
       control_timer_ = create_wall_timer(std::chrono::milliseconds(50), [this]() {control();});
     }
     RCLCPP_INFO(get_logger(), "Frontier explorer started (%zu ramp transitions); "

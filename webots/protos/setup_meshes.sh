@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Copy the TurtleBot 4 / Create 3 CAD meshes from the ROS 2 Humble install
+# Copy the TurtleBot 4 / Create 3 CAD meshes from the ROS 2 Jazzy install
 # next to the proto (Webots resolves the proto's relative mesh URLs here).
 set -euo pipefail
-ROS_ROOT="${ROS_ROOT:-/opt/ros/humble}"
+ROS_ROOT="${ROS_ROOT:-/opt/ros/jazzy}"
 DEST="$(cd "$(dirname "$0")" && pwd)/meshes"
 mkdir -p "$DEST"
 for f in \
